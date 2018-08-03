@@ -139,7 +139,12 @@ func NewCluster(policy *ClientPolicy, hosts []*Host) (*Cluster, error) {
 	newCluster.wgTend.Add(1)
 	go newCluster.clusterBoss(&newCluster.clientPolicy)
 
-	Logger.Debug("New cluster initialized and ready to be used...")
+	if err == nil {
+		Logger.Debug("New cluster initialized and ready to be used...")
+	} else {
+		Logger.Error("New cluster was not initialized successfully, but the client will keep trying to connect to the database. Error: %s", err.Error())
+	}
+
 	return newCluster, err
 }
 
@@ -463,6 +468,11 @@ func (clstr *Cluster) waitTillStabilized() error {
 				Logger.Warn(err.Error())
 			}
 
+			// // if there are no errors in connecting to the cluster, then validate the partition table
+			// if err == nil {
+			// 	err = clstr.getPartitions().validate()
+			// }
+
 			// Check to see if cluster has changed since the last Tend().
 			// If not, assume cluster has stabilized and return.
 			if count == len(clstr.GetNodes()) {
@@ -478,10 +488,12 @@ func (clstr *Cluster) waitTillStabilized() error {
 
 	select {
 	case <-time.After(clstr.clientPolicy.Timeout):
-		clstr.Close()
+		if clstr.clientPolicy.FailIfNotConnected {
+			clstr.Close()
+		}
 		return errors.New("Connecting to the cluster timed out.")
 	case err := <-doneCh:
-		if err != nil {
+		if err != nil && clstr.clientPolicy.FailIfNotConnected {
 			clstr.Close()
 		}
 		return err
@@ -498,6 +510,10 @@ func (clstr *Cluster) findAlias(alias *Host) *Node {
 }
 
 func (clstr *Cluster) setPartitions(partMap partitionMap) {
+	if err := partMap.validate(); err != nil {
+		Logger.Error("Partition map error: %s.", err.Error())
+	}
+
 	clstr.partitionWriteMap.Store(partMap)
 }
 

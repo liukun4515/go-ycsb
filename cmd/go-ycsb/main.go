@@ -109,7 +109,6 @@ func initialGlobal(dbName string, onProperties func()) {
 
 func main() {
 	globalContext, globalCancel = context.WithCancel(context.Background())
-
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc,
 		syscall.SIGHUP,
